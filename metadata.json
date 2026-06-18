@@ -1,0 +1,6 @@
+{
+  "name": "Syzhlin Writing Lab",
+  "description": "나만의 바다 집필실 - 책을 쓰는 작가를 위한 조용한 개인 집필 스튜디오",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
