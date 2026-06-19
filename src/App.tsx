@@ -209,8 +209,8 @@ export default function App() {
     saveChapters(revisedChapters);
   };
 
-  // Export Chapter to Google Docs (replicates cloud synchronization)
-  const handleExportToGDocs = (chapterId: string) => {
+  // Export Chapter to Google Docs
+  const handleExportToGDocs = async (chapterId: string) => {
     const chap = chapters.find((c) => c.id === chapterId);
     const proj = projects.find((p) => p.id === chap?.bookId);
 
@@ -218,31 +218,42 @@ export default function App() {
 
     if (!gdocsLinked) {
       const integrate = window.confirm("Google Docs 연동이 해제되어 있습니다.\n구글 드라이브와 실시간으로 동기화하려면 먼저 설정을 완료해 주세요. 연동하시겠습니까?");
-      if (integrate) {
-        setGdocsLinked(true);
-      }
+      if (integrate) setGdocsLinked(true);
       return;
     }
 
-    // Generate output file identifier
-    const dateStr = new Date().toISOString().slice(2, 10).replace(/-/g, ""); // e.g. "260618"
-    const cleanedTitle = proj.title.replace(/\s+/g, "");
-    const cleanedChapTitle = chap.title.replace(/\s+/g, "");
-    const documentTitle = `${dateStr}_${cleanedTitle}_${cleanedChapTitle}`;
-    
-    const docId = `gdocs-${Date.now()}`;
-    const newLog: ExportLog = {
-      id: `log-${Date.now()}`,
-      bookId: proj.id,
-      chapterId: chap.id,
-      provider: "google_docs",
-      documentTitle,
-      documentUrl: `https://docs.google.com/document/d/${docId}/edit`,
-      exportedAt: new Date().toISOString(),
-    };
+    const dateStr = new Date().toISOString().slice(2, 10).replace(/-/g, "");
+    const documentTitle = `${dateStr}_${proj.title.replace(/\s+/g, "")}_${chap.title.replace(/\s+/g, "")}`;
 
-    saveExportLogs([newLog, ...exportLogs]);
-    alert(`[Google Docs 내보내기 성공]\n\n원고가 성공적으로 구글 드라이브로 백업되었습니다!\n\n파일명: ${documentTitle}\n(원고 보관함에서 확인 가능)`);
+    try {
+      const response = await fetch("/api/docs-export", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ chapterId, title: documentTitle, content: chap.content || "" }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok || !data.success) {
+        alert(`Google Docs 내보내기 실패\n\n${data.error || "알 수 없는 오류가 발생했습니다."}`);
+        return;
+      }
+
+      const newLog: ExportLog = {
+        id: `log-${Date.now()}`,
+        bookId: proj.id,
+        chapterId: chap.id,
+        provider: "google_docs",
+        documentTitle: data.documentTitle || documentTitle,
+        documentUrl: data.documentUrl,
+        exportedAt: data.exportedAt || new Date().toISOString(),
+      };
+
+      saveExportLogs([newLog, ...exportLogs]);
+      alert(`[Google Docs 내보내기 성공]\n\n파일명: ${documentTitle}\n\n문서 링크:\n${data.documentUrl}`);
+    } catch (error: any) {
+      alert(`Google Docs 내보내기 오류\n\n${error.message}`);
+    }
   };
 
   // Route back from quick landing actions

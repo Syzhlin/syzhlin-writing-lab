@@ -1,18 +1,14 @@
+import { google } from "googleapis";
+
 async function getRequestBody(req: any): Promise<any> {
   if (req.body) {
     return typeof req.body === "string" ? JSON.parse(req.body) : req.body;
   }
   return new Promise((resolve) => {
     let body = "";
-    req.on("data", (chunk: any) => {
-      body += chunk;
-    });
+    req.on("data", (chunk: any) => { body += chunk; });
     req.on("end", () => {
-      try {
-        resolve(body ? JSON.parse(body) : {});
-      } catch {
-        resolve({});
-      }
+      try { resolve(body ? JSON.parse(body) : {}); } catch { resolve({}); }
     });
   });
 }
@@ -20,47 +16,93 @@ async function getRequestBody(req: any): Promise<any> {
 export default async function handler(req: any, res: any) {
   if (req.method !== "POST") {
     res.writeHead(405, { "Content-Type": "application/json" });
-    return res.end(JSON.stringify({ error: "Method not allowed. Use POST." }));
+    return res.end(JSON.stringify({ error: "Method not allowed" }));
   }
 
   try {
     const body = await getRequestBody(req);
     const { chapterId, title, content } = body;
 
-    if (!chapterId || !title) {
+    if (!title) {
       res.writeHead(400, { "Content-Type": "application/json" });
-      return res.end(JSON.stringify({ error: "chapterId와 title 값은 필수적입니다." }));
+      return res.end(JSON.stringify({ error: "title은 필수입니다." }));
     }
 
-    // Google Services validation
-    const hasGoogleAuth = !!(
-      process.env.GOOGLE_CLIENT_EMAIL &&
-      process.env.GOOGLE_PRIVATE_KEY &&
-      process.env.GOOGLE_DOCS_FOLDER_ID
-    );
+    const clientEmail = process.env.GOOGLE_CLIENT_EMAIL;
+    const privateKey = process.env.GOOGLE_PRIVATE_KEY?.replace(/\\n/g, "\n");
+    const folderId = process.env.GOOGLE_DOCS_FOLDER_ID;
 
-    // Dynamic ID for mock document path
-    const randomHex = Math.random().toString(16).substring(2, 10);
-    const mockDocUrl = `https://docs.google.com/document/d/1_syzhlin_mock_id_${chapterId}_${randomHex}/edit`;
+    if (!clientEmail || !privateKey) {
+      res.writeHead(500, { "Content-Type": "application/json" });
+      return res.end(JSON.stringify({
+        error: "서비스 계정 환경변수(GOOGLE_CLIENT_EMAIL, GOOGLE_PRIVATE_KEY)가 Vercel에 설정되지 않았습니다.",
+      }));
+    }
 
-    const responsePayload = {
-      success: true,
-      exportedAt: new Date().toISOString(),
-      documentTitle: `Syzhlin Lab - ${title}`,
-      documentUrl: mockDocUrl,
-      chapterId: chapterId,
-      connectedViaServiceAccount: hasGoogleAuth,
-      message: hasGoogleAuth 
-        ? "구글 연동 서비스 어카운트를 통해 실제 양식 문서로 성공적으로 업로드되었습니다."
-        : "로컬 시뮬레이션 상태로 내보내기 문서 링크가 매끄럽게 발급되었습니다.",
-    };
+    // 서비스 계정 JWT 인증
+    const auth = new google.auth.JWT({
+      email: clientEmail,
+      key: privateKey,
+      scopes: [
+        "https://www.googleapis.com/auth/documents",
+        "https://www.googleapis.com/auth/drive",
+      ],
+    });
+
+    const docs = google.docs({ version: "v1", auth });
+    const drive = google.drive({ version: "v3", auth });
+
+    // Google Doc 생성
+    const doc = await docs.documents.create({
+      requestBody: { title },
+    });
+
+    const documentId = doc.data.documentId!;
+
+    // 본문 내용 삽입
+    if (content && content.trim()) {
+      await docs.documents.batchUpdate({
+        documentId,
+        requestBody: {
+          requests: [
+            {
+              insertText: {
+                location: { index: 1 },
+                text: content,
+              },
+            },
+          ],
+        },
+      });
+    }
+
+    // 지정 폴더로 이동
+    if (folderId) {
+      const file = await drive.files.get({ fileId: documentId, fields: "parents" });
+      const prevParents = (file.data.parents || []).join(",");
+      await drive.files.update({
+        fileId: documentId,
+        addParents: folderId,
+        removeParents: prevParents,
+        fields: "id, parents",
+      });
+    }
+
+    const documentUrl = `https://docs.google.com/document/d/${documentId}/edit`;
+    const exportedAt = new Date().toISOString();
 
     res.writeHead(200, { "Content-Type": "application/json" });
-    return res.end(JSON.stringify(responsePayload));
+    return res.end(JSON.stringify({
+      success: true,
+      documentId,
+      documentUrl,
+      documentTitle: title,
+      exportedAt,
+    }));
 
   } catch (error: any) {
-    console.error("Vercel export error:", error);
+    console.error("Google Docs export error:", error);
     res.writeHead(500, { "Content-Type": "application/json" });
-    res.end(JSON.stringify({ error: error.message || "원고 내보내기 처리 중 지연 오류가 발생했습니다." }));
+    res.end(JSON.stringify({ error: error.message || "내보내기 중 오류가 발생했습니다." }));
   }
 }
