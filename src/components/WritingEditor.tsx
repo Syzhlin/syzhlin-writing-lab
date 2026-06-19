@@ -41,6 +41,7 @@ export default function WritingEditor({
   }, [selectedChapterId, currentChapter?.id]);
 
   const handleTextChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    if (!currentChapter) return;
     const val = e.target.value;
     setEditorContent(val);
     setSaveStatus("typing");
@@ -58,6 +59,7 @@ export default function WritingEditor({
   };
 
   const handleNoteChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!currentChapter) return;
     const val = e.target.value;
     setChapterNote(val);
     setSaveStatus("typing");
@@ -195,10 +197,10 @@ export default function WritingEditor({
         </div>
 
         {/* Paper Canvas */}
-        <div 
+        <div
           className={`flex-1 rounded-3xl p-8 md:p-12 shadow-sm border transition-all duration-500 ${
-            focusMode 
-              ? "bg-[#F8F5EF] border-[#182A4D]/10 text-[#182A4D]" 
+            focusMode
+              ? "bg-[#F8F5EF] border-[#182A4D]/10 text-[#182A4D]"
               : "bg-white border-[#182A4D]/5 text-[#182A4D]"
           }`}
           style={{ minHeight: "550px" }}
@@ -212,8 +214,9 @@ export default function WritingEditor({
 
             {/* Quick Export Button */}
             <button
-              onClick={() => onExportToGDocs(currentChapter.id)}
-              className="flex items-center space-x-1.5 px-4 py-2 rounded-full text-xs font-bold border text-[#182A4D] bg-[#BFEDEB] border-[#182A4D]/10 hover:bg-[#86D7E8]/40 transition-all ml-auto md:ml-0"
+              onClick={() => currentChapter && onExportToGDocs(currentChapter.id)}
+              disabled={!currentChapter}
+              className="flex items-center space-x-1.5 px-4 py-2 rounded-full text-xs font-bold border text-[#182A4D] bg-[#BFEDEB] border-[#182A4D]/10 hover:bg-[#86D7E8]/40 transition-all ml-auto md:ml-0 disabled:opacity-50 disabled:cursor-not-allowed"
               title="현 챕터 Google Docs로 무제한 전송"
             >
               <FileDown className="w-3.5 h-3.5 text-[#182A4D]/70" />
@@ -266,8 +269,8 @@ export default function WritingEditor({
           <div className="flex items-center space-x-3 flex-1 max-w-xs justify-end w-full">
             <div className="text-[11px] text-slate-400 font-medium">오늘 작성량: {wordCount.toLocaleString()}자 / {todayGoal}자</div>
             <div className="w-20 h-1.5 bg-slate-100 rounded-full overflow-hidden hidden sm:block">
-              <div 
-                className="h-full bg-[#182A4D] rounded-full transition-all duration-300" 
+              <div
+                className="h-full bg-[#182A4D] rounded-full transition-all duration-300"
                 style={{ width: `${todayProgressPercent}%` }}
               />
             </div>
